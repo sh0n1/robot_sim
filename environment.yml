@@ -1,0 +1,12 @@
+name: simthing
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - matplotlib
+  - scipy
+  - requests
+  - opencv
+  - open3d
+  - shapely
