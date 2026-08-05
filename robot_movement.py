@@ -166,7 +166,7 @@ class PursuitLine:
 
     def get_next_closest_point(self, index, current_position, radius):
         if self._distance(current_position, index + 1) <= radius:
-            print(f"To the next point - {index + 1}")
+            # print(f"To the next point - {index + 1}")
             return index + 1
         return index
 

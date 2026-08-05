@@ -2,6 +2,7 @@ from plot_arena import *
 import cv2
 
 import time
+from copy import deepcopy
 
 running = True
 
@@ -11,6 +12,89 @@ def on_key(event):
     if event.key == "q":
         running = False
         print("Exit key detected. Closing...")
+
+
+def _copy_entities(entities):
+    return [entity.copy() for entity in entities]
+
+
+def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, goal=None):
+    next_entity = entity.copy()
+    robot_pose = np.array([[next_entity['x']], [next_entity['y']], [next_entity['theta']]])
+
+    current_x, current_y, current_theta = next_entity['x'], next_entity['y'], next_entity['theta']
+
+    next_entity['current_index'] = follow_traj.get_next_closest_point(
+        next_entity['current_index'],
+        (next_entity['x'], next_entity['y']),
+        follow_RAD,
+    )
+    target = follow_traj.get_point(next_entity['current_index'])
+
+    turn = angle_to_point(current_x, current_y, np.degrees(current_theta), target)
+    yl = KL * turn
+    turn = lock_angle(180, yl)
+
+    if not is_close_wall(current_x, current_y):
+        robot_pose = turnwheels_sim(robot_pose, target_v, turn, next_entity['width'])
+
+    reached_goal = False
+    if goal is not None and is_close_point(current_x, current_y, goal[0], goal[1], tol=0.1):
+        reached_goal = True
+
+    next_entity['x'] = robot_pose[0, 0]
+    next_entity['y'] = robot_pose[1, 0]
+    next_entity['theta'] = robot_pose[2, 0]
+
+    return next_entity, reached_goal
+
+
+def simulate_pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=10, goal=None, max_steps=2400, dt=0.05, progress_interval=None):
+    """Run pure pursuit without rendering and return a frame log."""
+    current_entities = deepcopy(entities)
+    start_time = time.perf_counter()
+
+    for entity in current_entities:
+        entity['current_index'] = follow_traj.find_closest_index((entity['x'], entity['y']))
+
+    history = []
+    for step in range(max_steps):
+        if progress_interval and step % progress_interval == 0:
+            elapsed = time.perf_counter() - start_time
+            print(f'Simulation progress: step {step}, sim t={step * dt:.2f}s, elapsed={elapsed:.4f}s')
+
+        history.append({
+            'step': step,
+            'time': step * dt,
+            'entities': _copy_entities(current_entities),
+            'trajectories': trajectories,
+        })
+
+        next_entities = []
+        goal_reached = False
+        for index, entity in enumerate(current_entities):
+            next_entity, reached_goal = _step_pure_pursuit_entity(
+                entity,
+                follow_traj,
+                follow_RAD,
+                target_v,
+                KL=KL,
+                goal=goal if index == 0 else None,
+            )
+            next_entities.append(next_entity)
+            goal_reached = goal_reached or reached_goal
+
+        current_entities = next_entities
+        if goal_reached:
+            history.append({
+                'step': step + 1,
+                'time': (step + 1) * dt,
+                'entities': _copy_entities(current_entities),
+                'trajectories': trajectories,
+            })
+            break
+
+    return history, current_entities
 
 
 def move_to_singular_point(entities, point, target_v, trajectories, KL=10):

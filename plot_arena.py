@@ -180,3 +180,39 @@ def plot_noarena(axes:Axes,
             
     plt.draw()  
     plt.pause(0.0001)
+
+
+def render_history(history, trajectories=None, arena_size=None, beacons=None, playback_speed=10.0, stride=1, min_pause=0.02):
+    """Render a previously simulated frame log after the simulation completes."""
+    if trajectories is None:
+        trajectories = []
+    if arena_size is None:
+        arena_size = [2, 2]
+    if beacons is None:
+        beacons = []
+
+    plt.ion()
+    plt.figure()
+    axes = plt.gca()
+
+    previous_time = None
+    for frame in history[::stride]:
+        plot_arena(
+            axes,
+            entities=frame['entities'],
+            arena_size=arena_size,
+            trajectories=trajectories,
+            beacons=beacons,
+        )
+        axes.set_title(f"Arena - t={frame['time']:.2f}s")
+
+        if previous_time is None:
+            pause = min_pause
+        else:
+            simulated_delta = max(frame['time'] - previous_time, 0.0)
+            pause = max(simulated_delta / playback_speed, min_pause)
+        previous_time = frame['time']
+
+        plt.pause(pause)
+
+    plt.ioff()
