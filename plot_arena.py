@@ -140,7 +140,15 @@ def plot_arena(axes:Axes,
     for entity in entities:
         x, y, theta = entity['x'], entity['y'], entity['theta'] 
         length, width = entity['length'], entity['width']
-        plot_triangle(x, y, theta, base_length=width, height=length, color='b', axes=axes, coordinate_frame=True)
+        show_arrows = entity.get('show_arrows', False)
+        color = entity.get('color', 'b')
+        plot_triangle(x, y, theta, base_length=width, height=length, color=color, axes=axes, coordinate_frame=show_arrows)
+
+        id_number = entity.get('id_num')
+        show_id = entity.get('show_id', id_number is not None)
+        if show_id:
+            label = str(id_number if id_number is not None else entity.get('id', ''))
+            axes.text(x, y, label, fontsize=8, ha='center', va='center', color='k', weight='bold')
         
     plt.grid()
     plt.draw()  
@@ -176,7 +184,15 @@ def plot_noarena(axes:Axes,
             print(f"Entity: {entity['id']}")
             x, y, theta = entity['x'], entity['y'], entity['theta'] 
             length, width = entity['length'], entity['width']
-            plot_triangle(x, y, theta, base_length=width, height=length, color='b', axes=axes, coordinate_frame=True, triangle=False)
+            show_arrows = entity.get('show_arrows', False)
+            color = entity.get('color', 'b')
+            plot_triangle(x, y, theta, base_length=width, height=length, color=color, axes=axes, coordinate_frame=show_arrows, triangle=False)
+
+            id_number = entity.get('id_num')
+            show_id = entity.get('show_id', id_number is not None)
+            if show_id:
+                label = str(id_number if id_number is not None else entity.get('id', ''))
+                axes.text(x, y, label, fontsize=8, ha='center', va='center', color='k', weight='bold')
             
     plt.draw()  
     plt.pause(0.0001)
