@@ -1,12 +1,4 @@
-from typing import List,Tuple
-
 import numpy as np
-from shapely.geometry import Polygon
-from shapely import affinity
-import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-
-import time
 import math
 
 # MATH FUNCTIONS

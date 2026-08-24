@@ -3,41 +3,7 @@ from plot_arena import render_history
 
 import argparse
 import time
-
-
-def build_demo_problem():
-    entities = [
-        {'id': 'car1', 'id_num': 1, 'show_id': True, 'show_arrows': False, 'color': 'r', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.25, 'theta': np.radians(0)},
-        {'id': 'car2', 'id_num': 2, 'show_id': True, 'show_arrows': False, 'color': 'g', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.40, 'theta': np.radians(0)},
-        {'id': 'car3', 'id_num': 3, 'show_id': True, 'show_arrows': False, 'color': 'm', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.55, 'theta': np.radians(0)},
-        {'id': 'car4', 'id_num': 4, 'show_id': True, 'show_arrows': False, 'color': 'c', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.70, 'theta': np.radians(0)},
-        {'id': 'car5', 'id_num': 5, 'show_id': True, 'show_arrows': False, 'color': 'y', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.85, 'theta': np.radians(0)},
-        {'id': 'car6', 'id_num': 6, 'show_id': True, 'show_arrows': False, 'color': 'tab:orange', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1., 'theta': np.radians(0)},
-        {'id': 'car7', 'id_num': 7, 'show_id': True, 'show_arrows': False, 'color': 'tab:purple', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.15, 'theta': np.radians(0)},
-        {'id': 'car8', 'id_num': 8, 'show_id': True, 'show_arrows': False, 'color': 'tab:brown', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.3, 'theta': np.radians(0)},
-        {'id': 'car9', 'id_num': 9, 'show_id': True, 'show_arrows': False, 'color': 'tab:pink', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.45, 'theta': np.radians(0)},
-        {'id': 'car10', 'id_num': 10, 'show_id': True, 'show_arrows': False, 'color': 'tab:gray', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.6, 'theta': np.radians(0)},
-        {'id': 'car11', 'id_num': 11, 'show_id': True, 'show_arrows': False, 'color': 'tab:olive', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.75, 'theta': np.radians(0)},
-    ]
-
-    a = 0.7
-    theta = np.linspace(0, 2 * np.pi, 300)
-    x_values = a * np.cos(theta) / (np.sin(theta)**2 + 1) + 1
-    y_values = a * np.sin(theta) * np.cos(theta) / (np.sin(theta)**2 + 1) + 1
-    lemniscate_traj = np.array([[x_values], [y_values]])
-    lemniscate = PursuitLine(x_points=x_values, y_points=y_values)
-
-    goal_x = 1.25
-    goal_y = 1.2
-    goal = np.array([[goal_x], [goal_y]])
-
-    trajectories = [
-        ("Follow Lemniscate", lemniscate_traj),
-        ("Move to Point", goal),
-    ]
-
-    return entities, trajectories, lemniscate, goal
-
+import random
 
 if __name__ == '__main__':  
     parser = argparse.ArgumentParser(description='Robot simulation demo')
@@ -49,8 +15,72 @@ if __name__ == '__main__':
     parser.add_argument('--perf-runs', type=int, default=1, help='Run the simulation N times and average the performance')
     args = parser.parse_args()
 
-    entities, trajectories, lemniscate, goal = build_demo_problem()
+    # PURE PURSUIT LEMNISCATE WITH GOAL
+    # a = 0.7
+    # theta = np.linspace(0, 2 * np.pi, 300)
+    # x_values = a * np.cos(theta) / (np.sin(theta)**2 + 1) + 1
+    # y_values = a * np.sin(theta) * np.cos(theta) / (np.sin(theta)**2 + 1) + 1
+    # lemniscate_traj = np.array([[x_values], [y_values]])
+    # path = PursuitLine(x_points=x_values, y_points=y_values)
 
+    goal_x = 1.7
+    goal_y = 1.7
+    goal = np.array([goal_x, goal_y])
+
+    # PATH PLANNING
+    buf = 5
+    N = 101
+    obstacles = [(0.452, 0.862, 0.698, 0.98),
+                (1.27, 1.648, 1.096, 1.386),
+                (0.726, 1.03, 1.308, 1.648)]
+
+    ob_grid, obs_buffered, obs_og = create_obstacle_grid(obstacles, N, buf)    
+    distance_map = distance_transform(ob_grid,goal,N)
+
+    # entities = [
+    #         {'id': 'car1', 'id_num': 1, 'show_id': True, 'show_arrows': False, 'color': 'r', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.25, 'theta': np.radians(0)},
+    #         {'id': 'car2', 'id_num': 2, 'show_id': True, 'show_arrows': False, 'color': 'g', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.40, 'theta': np.radians(0)},
+    #         {'id': 'car3', 'id_num': 3, 'show_id': True, 'show_arrows': False, 'color': 'm', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.55, 'theta': np.radians(0)},
+    #         {'id': 'car4', 'id_num': 4, 'show_id': True, 'show_arrows': False, 'color': 'c', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.70, 'theta': np.radians(0)},
+    #         {'id': 'car5', 'id_num': 5, 'show_id': True, 'show_arrows': False, 'color': 'y', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.85, 'theta': np.radians(0)},
+    #         {'id': 'car6', 'id_num': 6, 'show_id': True, 'show_arrows': False, 'color': 'tab:orange', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1., 'theta': np.radians(0)},
+    #         {'id': 'car7', 'id_num': 7, 'show_id': True, 'show_arrows': False, 'color': 'tab:purple', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.15, 'theta': np.radians(0)},
+    #         {'id': 'car8', 'id_num': 8, 'show_id': True, 'show_arrows': False, 'color': 'tab:brown', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.3, 'theta': np.radians(0)},
+    #         {'id': 'car9', 'id_num': 9, 'show_id': True, 'show_arrows': False, 'color': 'tab:pink', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.45, 'theta': np.radians(0)},
+    #         {'id': 'car10', 'id_num': 10, 'show_id': True, 'show_arrows': False, 'color': 'tab:gray', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.6, 'theta': np.radians(0)},
+    #         {'id': 'car11', 'id_num': 11, 'show_id': True, 'show_arrows': False, 'color': 'tab:olive', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.75, 'theta': np.radians(0)},
+    #     ]
+
+    entity_num = 100
+    entities = []
+
+    for i in range(entity_num):
+        entities.append({
+            'id': f'car{i+1}',
+            'id_num': i+1,
+            'show_id': True,
+            'show_arrows': False,
+            'color': random.choice(['r', 'g', 'b', 'm', 'c', 'y', 'tab:orange', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive']),
+            'length': 0.1,
+            'width': 0.1,
+            'x': random.randint(25, 175)/100,  # Randomize the x position slightly
+            'y': random.randint(25, 175)/100,  # Randomize the y position slightly
+            'theta': np.radians(0)
+        })
+    
+    follow_trajs = []
+    path_trajectories = []
+    for entity in entities:
+        _, _, _, xpath, ypath = init_path(distance_map, np.array([entity['x'], entity['y']]), N)
+        follow_trajs.append(PursuitLine(x_points=xpath, y_points=ypath))
+        path_trajectories.append((f"Path Finding {entity['id']}", np.array([[xpath], [ypath]])))
+
+    trajectories = [
+        # ("Follow Lemniscate", lemniscate_traj),
+        ("GOAL", np.array([[goal[0]], [goal[1]]])),
+        *path_trajectories,
+    ]
+    ####################################
     if args.perf:
         print('Performance test: simulation starting')
 
@@ -65,11 +95,11 @@ if __name__ == '__main__':
         history, final_entities = simulate_pure_pursuit(
             entities,
             trajectories,
-            lemniscate,
+            follow_trajs,
             0.2,
             25,
             KL=5,
-            goal=(goal[0, 0], goal[1,0]),
+            goal=goal,
             progress_interval=args.perf_interval if args.perf else None,
         )
         sim_end = time.perf_counter()
@@ -98,6 +128,9 @@ if __name__ == '__main__':
             history,
             trajectories=trajectories,
             arena_size=[2, 2],
+            obstacles=obstacles,
+            buf_obstacles=obs_buffered,
+            obstacle_positions=obs_og,
             playback_speed=args.playback_speed,
             stride=max(1, args.render_stride),
         )

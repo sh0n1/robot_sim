@@ -18,8 +18,23 @@ def _copy_entities(entities):
     return [entity.copy() for entity in entities]
 
 
+def _normalize_follow_trajs(entities, follow_trajs):
+    if hasattr(follow_trajs, 'find_closest_index'):
+        return [follow_trajs for _ in entities]
+
+    follow_trajs = list(follow_trajs)
+    if len(follow_trajs) != len(entities):
+        raise ValueError('Expected one follow trajectory per entity')
+
+    return follow_trajs
+
+
 def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, goal=None):
     next_entity = entity.copy()
+
+    if next_entity.get('reached_goal', False):
+        return next_entity, True
+
     robot_pose = np.array([[next_entity['x']], [next_entity['y']], [next_entity['theta']]])
 
     current_x, current_y, current_theta = next_entity['x'], next_entity['y'], next_entity['theta']
@@ -41,6 +56,7 @@ def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, 
     reached_goal = False
     if goal is not None and is_close_point(current_x, current_y, goal[0], goal[1], tol=0.1):
         reached_goal = True
+        next_entity['reached_goal'] = True
 
     next_entity['x'] = robot_pose[0, 0]
     next_entity['y'] = robot_pose[1, 0]
@@ -49,13 +65,16 @@ def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, 
     return next_entity, reached_goal
 
 
-def simulate_pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=10, goal=None, max_steps=2400, dt=0.05, progress_interval=None):
+def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, target_v, KL=10, goal=None, max_steps=2400, dt=0.05, progress_interval=None):
     """Run pure pursuit without rendering and return a frame log."""
     current_entities = deepcopy(entities)
     start_time = time.perf_counter()
 
-    for entity in current_entities:
+    follow_trajs = _normalize_follow_trajs(current_entities, follow_trajs)
+
+    for entity, follow_traj in zip(current_entities, follow_trajs):
         entity['current_index'] = follow_traj.find_closest_index((entity['x'], entity['y']))
+        entity['reached_goal'] = False
 
     history = []
     for step in range(max_steps):
@@ -71,21 +90,21 @@ def simulate_pure_pursuit(entities, trajectories, follow_traj, follow_RAD, targe
         })
 
         next_entities = []
-        goal_reached = False
-        for index, entity in enumerate(current_entities):
+        goal_reached = True if goal is not None else False
+        for entity, follow_traj in zip(current_entities, follow_trajs):
             next_entity, reached_goal = _step_pure_pursuit_entity(
                 entity,
                 follow_traj,
                 follow_RAD,
                 target_v,
                 KL=KL,
-                goal=goal if index == 0 else None,
+                goal=goal,
             )
             next_entities.append(next_entity)
-            goal_reached = goal_reached or reached_goal
+            goal_reached = goal_reached and reached_goal if goal is not None else False
 
         current_entities = next_entities
-        if goal_reached:
+        if goal is not None and goal_reached:
             history.append({
                 'step': step + 1,
                 'time': (step + 1) * dt,
@@ -244,64 +263,155 @@ def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=1
     
     plt.ioff() 
 
+def create_obstacle_grid(obstacles, N, BUFFER):
+    # Create a 101x101 obstacle grid
+    obstacle_grid = np.zeros((N, N), dtype=np.float64)
+    # Loop through obstacles and mark cells as occupied
+    obs_buffered = []
+    for obstacle in obstacles:
+        xmin, xmax, ymin, ymax = obstacle
 
-def no_localiser_template(entities, beacons):
-    ax = plt.ion()
-    plt.figure()
+        # Add buffer in metres
+        xmin_m = max(0, xmin - BUFFER*0.02)  # Clamp xmin to 0
+        xmax_m = min(2, xmax + BUFFER*0.02)  # Clamp xmax to 2
+        ymin_m = max(0, ymin - BUFFER*0.02)  # Clamp ymin to 0
+        ymax_m = min(2, ymax + BUFFER*0.02)  # Clamp ymax to 2
 
-    plt.gcf().canvas.mpl_connect("key_press_event", on_key)
+        # Convert to cells
+        # Adding Buffer around obstacle
+        xmin = max(0,(int(xmin*100/2) - BUFFER))
+        xmax = min(N-1,(int(xmax*100/2) + BUFFER))
+        ymin = max(0,(int(ymin*100/2) - BUFFER))
+        ymax = min(N-1,(int(ymax*100/2) + BUFFER))
 
-    start_time = time.perf_counter()
-    t = 0
+        # Mark the corresponding cells as occupied
+        # Add 1 to max to include max in splicing
+        obstacle_grid[ymin:ymax+1, xmin:xmax+1] = 1
+        # Append buffered obstacles:
+        obs_buffered.append((xmin_m, xmax_m, ymin_m, ymax_m))
 
-    while running:
-        print(f"\ntime: {t:.2f}")
-        current_time = time.perf_counter()
-        t = current_time - start_time
-        
-        axes = plt.gca()
+    # Add border around the grid
+    obstacle_grid[:BUFFER, :] = 1  # Top border
+    obstacle_grid[-BUFFER:, :] = 1  # Bottom border
+    obstacle_grid[:, :BUFFER] = 1  # Left border
+    obstacle_grid[:, -BUFFER:] = 1  # Right border
+    return obstacle_grid, obs_buffered, obstacles
 
-        for entity in entities:
-            plot_arena(axes, entities=entities, arena_size=[2, 2], beacons=beacons)
-            robot_pose = np.array([[entity['x']], [entity['y']], [entity['theta']]])
+def distance_transform(map:np.ndarray,goal:np.ndarray, N:int):
+    """
+    Compute the distance transform from the provided map and goal location.
 
-            current_x, current_y, current_theta = entity['x'], entity['y'], entity['theta'] #getLocalizerPose()
-            encoders = entity['encoders']
-            
-            # yucky code that moves the robot in a square (clean up b4 real testing)
-            if t < 1:
-                robot_pose = setVelocity(entity['width'], .25, .25, current_pose=robot_pose)
-            if t > 1 and t < 2.5:
-                robot_pose = setVelocity(entity['width'], 0,0.165, current_pose=robot_pose)
+    parameters
+    ----------
+    map
+        An np.ndarray of shape (N,N) representing an occupancy grid. Values of 1
+        indicate occupied space (i.e. a wall), and values of 0 represent empty
+        space.
+    goal
+        An np.ndarray of shape (2,) giving the x-y coordinates of the goal.
 
-            if t > 2.5 and t < 3.5:
-                robot_pose = setVelocity(entity['width'], 0.25,0.25, current_pose=robot_pose)
-            if t > 3.5 and t < 5:
-                robot_pose = setVelocity(entity['width'], 0,0.165, current_pose=robot_pose)
-            
-            if t > 5 and t < 6:
-                robot_pose = setVelocity(entity['width'], 0.25,0.25, current_pose=robot_pose)
-            if t > 6 and t < 7.5:
-                robot_pose = setVelocity(entity['width'], 0,0.165, current_pose=robot_pose)
-            
-            if t > 7.5 and t < 8.5:
-                robot_pose = setVelocity(entity['width'], 0.25,0.25, current_pose=robot_pose)
-            if t > 8.5 and t < 10:
-                robot_pose = setVelocity(entity['width'], 0,0.165, current_pose=robot_pose)
+    Outputs
+    -------
+    distance_map
+        An np.ndarray the same shape as map where each value represents the
+        distance to the goal. Any walls should have the value np.nan.
+    """
+    distance_map = np.full_like(map, np.inf)  # Initialize distance map with NaNs
+    print(goal)
+    goal_x = int(goal[0]*100/2)
+    goal_y = int(goal[1]*100/2)
+    #? Swap x and y coz rows and collumns matrix
+    distance_map[goal_y, goal_x] = 0  # Distance to goal is 0
+    # Directions in surrounding 8 cells
+    directions = np.array([(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (-1, 1), (1, -1)])
 
-            if t > 10 and t < 11:
-                            robot_pose = setVelocity(entity['width'], 0.25,0.25, current_pose=robot_pose)
 
-            print(f"Plotting triangle at ({current_x}, {current_y}) with angle {wrap_angle(np.degrees(current_theta))} in degrees")
+    queue = Queue()
+    queue.put((goal_x,goal_y))
 
-            entity['x'] = robot_pose[0, 0]
-            entity['y'] = robot_pose[1, 0]        
-            entity['theta'] = robot_pose[2, 0]
+    while not queue.empty():
+        current_x, current_y = queue.get()
 
-        if t > 120:
+        for dx, dy in directions:
+            new_x, new_y = current_x + dx, current_y + dy
+
+            # Check if the new position is within the map boundaries and not a wall
+            if 0 <= new_x < N and 0 <= new_y < N and map[new_y, new_x] == 0:
+                # Calculate the distance based on Euclidean measure
+                distance = np.sqrt(dx ** 2 + dy ** 2) if dx != 0 and dy != 0 else 1
+                new_distance = distance_map[current_y, current_x] + distance
+
+                # Update the distance if it's shorter
+                if np.isnan(distance_map[new_y, new_x]) or new_distance < distance_map[new_y, new_x]:
+                    distance_map[new_y, new_x] = new_distance
+                    queue.put((new_x, new_y))
+
+    return distance_map
+
+def init_path(distance_map, start, N):
+    path = search_path(distance_map, start, N)
+    path_x = path[:, 0]
+    path_y = path[:, 1]
+    # For both path_x and path_y, need to undo int(start[0]*100/2) convertion
+    xpath = path_x / 100 * 2
+    ypath = path_y / 100 * 2
+    return path, path_x, path_y, xpath, ypath
+
+def search_path(distance_map: np.ndarray, start: np.ndarray, N: int):
+    """
+    Search for a path from the start position to the goal position using the distance map.
+
+    Parameters
+    ----------
+    distance_map : np.ndarray
+        An array of shape (N,N) representing the distance map.
+    start : np.ndarray
+        An array of shape (2,) giving the x-y coordinates of the start position.
+
+    Returns
+    -------
+    path : np.ndarray
+        An array of shape (P, 2) representing the path from start to goal, where P is the number of points in the path.
+    """
+    path = np.array([], dtype=int).reshape(0, 2)
+    # Directions in surrounding 8 cells
+    directions = np.array([(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (-1, 1), (1, -1)])
+
+    # Convert start position to integer coordinates
+    current_x = int(start[0]*100/2)
+    current_y = int(start[1]*100/2)
+
+    while True:
+        # Add the current position to the path
+        path = np.vstack([path, [current_x, current_y]])
+
+        min_distance = np.inf
+        next_x, next_y = current_x, current_y
+
+        # Search for the neighboring cell with the minimum distance
+        for dx, dy in directions:
+            new_x, new_y = current_x + dx, current_y + dy
+
+            # Check if the new position is within the map boundaries
+            if 0 <= new_x < N and 0 <= new_y < N:
+                distance = distance_map[new_y, new_x]
+
+                # Update the minimum distance and next position
+                if distance < min_distance:
+                    min_distance = distance
+                    next_x, next_y = new_x, new_y
+
+        # If the minimum distance is still infinity, no valid path is found
+        if min_distance == np.inf:
+            print("No valid path found")
             break
 
-    plt.ioff() 
+        # Move to the next position
+        current_x, current_y = next_x, next_y
 
+        # If the current position is the goal, break out of the loop
+        if min_distance == 0:
+            print("Path to goal done")
+            break
 
-
+    return path

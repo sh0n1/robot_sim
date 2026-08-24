@@ -1,11 +1,9 @@
 from robot_movement import *
 from typing import List,Tuple
-
 import numpy as np
-from shapely.geometry import Polygon
-from shapely import affinity
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+import matplotlib.patches as patches
 
 import time
 import math
@@ -135,6 +133,31 @@ def plot_arena(axes:Axes,
     for beacon in beacons:
         axes.plot(beacon['x'], beacon['y'], 'kx', markersize=5)
         axes.text(beacon['x'], beacon['y'], beacon['id'], fontsize=7, ha='right')
+
+    if obstacle_positions is not []:
+            for traj in trajectories:
+                #print(traj)
+                title = traj[0]
+                points = traj[1]
+    
+                axes.plot(points[0,0], points[1,0], linestyle=':', color='green')
+                axes.set_title(title)
+        
+    if obstacles is not []:
+        for obstacle in obstacles:
+            # add code to plot obstacles 
+            ob_xmin, ob_xmax, ob_ymin, ob_ymax = obstacle   
+            width, height= ob_xmax-ob_xmin, ob_ymax-ob_ymin
+
+            axes.add_patch(patches.Rectangle((ob_xmin, ob_ymin), width, height, edgecolor='red', fill=False))
+
+    if buf_obstacles is not []:
+        for buf_obstacle in buf_obstacles:
+            buf_xmin, buf_xmax, buf_ymin, buf_ymax = buf_obstacle   
+            buf_width, buf_height = buf_xmax-buf_xmin, buf_ymax-buf_ymin
+
+            axes.add_patch(patches.Rectangle((buf_xmin, buf_ymin), buf_width, buf_height, edgecolor='black', fill=False))
+    
     
     # Plot the entities starting positions
     for entity in entities:
@@ -198,7 +221,7 @@ def plot_noarena(axes:Axes,
     plt.pause(0.0001)
 
 
-def render_history(history, trajectories=None, arena_size=None, beacons=None, playback_speed=10.0, stride=1, min_pause=0.02):
+def render_history(history, trajectories=None, arena_size=None, beacons=None, obstacles=None, buf_obstacles=None, obstacle_positions=None, playback_speed=10.0, stride=1, min_pause=0.02):
     """Render a previously simulated frame log after the simulation completes."""
     if trajectories is None:
         trajectories = []
@@ -219,6 +242,10 @@ def render_history(history, trajectories=None, arena_size=None, beacons=None, pl
             arena_size=arena_size,
             trajectories=trajectories,
             beacons=beacons,
+            obstacles=obstacles,
+            buf_obstacles=buf_obstacles,
+            obstacle_positions=obstacle_positions
+
         )
         axes.set_title(f"Arena - t={frame['time']:.2f}s")
 
