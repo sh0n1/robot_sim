@@ -23,20 +23,44 @@ if __name__ == '__main__':
     # lemniscate_traj = np.array([[x_values], [y_values]])
     # path = PursuitLine(x_points=x_values, y_points=y_values)
 
-    goal_x = 1.7
-    goal_y = 1.7
+    goal_x = 1.5
+    goal_y = 1.5
     goal = np.array([goal_x, goal_y])
 
     # PATH PLANNING
-    buf = 5
-    N = 101
-    obstacles = [(0.452, 0.862, 0.698, 0.98),
-                (1.27, 1.648, 1.096, 1.386),
-                (0.726, 1.03, 1.308, 1.648)]
+    N = 101 #for bench mark: 101, 251, 501, 1001, 2001
+    buf = (N-1)//50  # The obstacle detection buffer. 5 at N=101
 
-    ob_grid, obs_buffered, obs_og = create_obstacle_grid(obstacles, N, buf)    
-    distance_map = distance_transform(ob_grid,goal,N)
+    arena_size = 3.0
+    obstacles = [(0.5, 0.9, 0.7, 1),
+                (1.3, 1.7, 1.1, 1.4),
+                (0.7, 1.0, 1.3, 1.6),
+                (2, 2.7, 1.5, 2.5),
+                (1.7, 2.5, 0.7, 1.3),
+                (1.9, 2.3, 0.4, 0.9),
+                (0.3, 0.7, 1.9, 2.3),
+                (1.4, 1.8, 2.2, 2.6),
+                (0.1, 0.5, 2.5, 2.9),
+                (1.0, 1.3, 0.1, 0.5),
+                ]
 
+    ob_grid, obs_buffered, obs_og = create_obstacle_grid(obstacles, N, buf, arena_size=arena_size)
+    rng = random.Random(42)
+
+    def cell_to_coord(cell_index):
+        return cell_index * arena_size / (N - 1)
+
+    def sample_spawn_position(free_cells, used_cells):
+        available_indices = [index for index in range(len(free_cells)) if index not in used_cells]
+        if not available_indices:
+            raise ValueError('No free spawn cells left')
+
+        chosen_index = rng.choice(available_indices)
+        row, col = free_cells[chosen_index]
+        used_cells.add(chosen_index)
+        return cell_to_coord(col), cell_to_coord(row)
+
+    # # FIXED SPAWNS
     # entities = [
     #         {'id': 'car1', 'id_num': 1, 'show_id': True, 'show_arrows': False, 'color': 'r', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.25, 'theta': np.radians(0)},
     #         {'id': 'car2', 'id_num': 2, 'show_id': True, 'show_arrows': False, 'color': 'g', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 0.40, 'theta': np.radians(0)},
@@ -50,46 +74,57 @@ if __name__ == '__main__':
     #         {'id': 'car10', 'id_num': 10, 'show_id': True, 'show_arrows': False, 'color': 'tab:gray', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.6, 'theta': np.radians(0)},
     #         {'id': 'car11', 'id_num': 11, 'show_id': True, 'show_arrows': False, 'color': 'tab:olive', 'length': 0.1, 'width': 0.1, 'x': 0.25, 'y': 1.75, 'theta': np.radians(0)},
     #     ]
-
-    entity_num = 100
-    entities = []
-
-    for i in range(entity_num):
-        entities.append({
-            'id': f'car{i+1}',
-            'id_num': i+1,
-            'show_id': True,
-            'show_arrows': False,
-            'color': random.choice(['r', 'g', 'b', 'm', 'c', 'y', 'tab:orange', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive']),
-            'length': 0.1,
-            'width': 0.1,
-            'x': random.randint(25, 175)/100,  # Randomize the x position slightly
-            'y': random.randint(25, 175)/100,  # Randomize the y position slightly
-            'theta': np.radians(0)
-        })
-    
-    follow_trajs = []
-    path_trajectories = []
-    for entity in entities:
-        _, _, _, xpath, ypath = init_path(distance_map, np.array([entity['x'], entity['y']]), N)
-        follow_trajs.append(PursuitLine(x_points=xpath, y_points=ypath))
-        path_trajectories.append((f"Path Finding {entity['id']}", np.array([[xpath], [ypath]])))
-
-    trajectories = [
-        # ("Follow Lemniscate", lemniscate_traj),
-        ("GOAL", np.array([[goal[0]], [goal[1]]])),
-        *path_trajectories,
-    ]
     ####################################
     if args.perf:
         print('Performance test: simulation starting')
 
     sim_durations = []
+    transform_durations = []
     history = []
     final_entities = []
     for run_index in range(max(1, args.perf_runs)):
         if args.perf and args.perf_runs > 1:
             print(f'Performance test: simulation run {run_index + 1}/{args.perf_runs}')
+
+        distance_transform_start = time.perf_counter()
+        distance_map = distance_transform(ob_grid, goal, N, arena_size=arena_size)
+        distance_transform_end = time.perf_counter()
+        transform_durations.append(distance_transform_end - distance_transform_start)
+
+        free_cells = np.argwhere(np.isfinite(distance_map))
+        entity_num = 10
+        if len(free_cells) < entity_num:
+            print(f"Not enough reachable free cells: {len(free_cells)} < {entity_num}")
+            entity_num = max(1, len(free_cells))
+
+        used_spawn_cells = set()
+        entities = []
+        for i in range(entity_num):
+            spawn_x, spawn_y = sample_spawn_position(free_cells, used_spawn_cells)
+            entities.append({
+                'id': f'car{i+1}',
+                'id_num': i+1,
+                'show_id': True,
+                'show_arrows': False,
+                'color': random.choice(['r', 'g', 'b', 'm', 'c', 'y', 'tab:orange', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive']),
+                'length': 0.1,
+                'width': 0.1,
+                'x': spawn_x,
+                'y': spawn_y,
+                'theta': np.radians(random.uniform(0, 360)),
+            })
+
+        follow_trajs = []
+        path_trajectories = []
+        for entity in entities:
+            _, _, _, xpath, ypath = init_path(distance_map, np.array([entity['x'], entity['y']]), N, arena_size=arena_size)
+            follow_trajs.append(PursuitLine(x_points=xpath, y_points=ypath))
+            path_trajectories.append((f"Path Finding {entity['id']}", np.array([[xpath], [ypath]])))
+
+        trajectories = [
+            ("GOAL", np.array([[goal[0]], [goal[1]]])),
+            *path_trajectories,
+        ]
 
         sim_start = time.perf_counter()
         history, final_entities = simulate_pure_pursuit(
@@ -97,19 +132,25 @@ if __name__ == '__main__':
             trajectories,
             follow_trajs,
             0.2,
-            25,
-            KL=5,
+            15,
+            KL=1000,
             goal=goal,
+            arena_size=arena_size,
             progress_interval=args.perf_interval if args.perf else None,
         )
         sim_end = time.perf_counter()
         sim_durations.append(sim_end - sim_start)
 
     if args.perf:
+        transform_total = sum(transform_durations)
+        transform_avg = transform_total / len(transform_durations)
         sim_duration = sum(sim_durations) / len(sim_durations)
         sim_total = sum(sim_durations)
         frame_count = len(history)
         simulated_time = history[-1]['time'] if history else 0.0
+        print(f'Distance transform time: {transform_durations[-1]:.4f}s')
+        print(f'Total distance transform time across {len(transform_durations)} run(s): {transform_total:.4f}s')
+        print(f'Average distance transform time: {transform_avg:.4f}s')
         print(f'Simulation complete: {frame_count} frames per run')
         print(f'Average simulation time over {len(sim_durations)} run(s): {sim_duration:.4f}s')
         print(f'Total simulation time across runs: {sim_total:.4f}s')
@@ -127,7 +168,7 @@ if __name__ == '__main__':
         render_history(
             history,
             trajectories=trajectories,
-            arena_size=[2, 2],
+            arena_size=[3, 3],
             obstacles=obstacles,
             buf_obstacles=obs_buffered,
             obstacle_positions=obs_og,

@@ -111,15 +111,15 @@ def angle_to_point(x,y,theta,point):
         angle_difference = wrap_angle(angle_to_point - theta)
         return angle_difference # in degrees
 
-def is_close_wall(x, y, tol=0.21):
+def is_close_wall(x, y, tol=0.05, arena_size=2.0):
     # When localiser not detected
     if (x==0 or y==0):
         return True
-    # Check if x is close to 0 and 2 within the specified tolerance
-    if (math.isclose(x, 0, abs_tol=tol) or math.isclose(x, 2, abs_tol=tol)):
+    # Check if x is close to the arena edges within the specified tolerance
+    if (math.isclose(x, 0, abs_tol=tol) or math.isclose(x, arena_size, abs_tol=tol)):
         return True
-    # Check if y is close to 0 and 2 within the specified tolerance
-    if (math.isclose(y, 0, abs_tol=tol) or math.isclose(y, 2, abs_tol=tol)):
+    # Check if y is close to the arena edges within the specified tolerance
+    if (math.isclose(y, 0, abs_tol=tol) or math.isclose(y, arena_size, abs_tol=tol)):
         return True
     # Else not close to wall
     return False

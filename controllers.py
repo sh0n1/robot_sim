@@ -29,11 +29,11 @@ def _normalize_follow_trajs(entities, follow_trajs):
     return follow_trajs
 
 
-def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, goal=None):
+def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, goal=None, arena_size=2.0):
     next_entity = entity.copy()
 
-    if next_entity.get('reached_goal', False):
-        return next_entity, True
+    if next_entity.get('reached_goal', False) or next_entity.get('reached_wall', False):
+        return next_entity, next_entity.get('reached_goal', False), next_entity.get('reached_wall', False)
 
     robot_pose = np.array([[next_entity['x']], [next_entity['y']], [next_entity['theta']]])
 
@@ -50,10 +50,14 @@ def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, 
     yl = KL * turn
     turn = lock_angle(180, yl)
 
-    if not is_close_wall(current_x, current_y):
+    reached_goal = False
+    reached_wall = is_close_wall(current_x, current_y, arena_size=arena_size)
+
+    if reached_wall:
+        next_entity['reached_wall'] = True
+    else:
         robot_pose = turnwheels_sim(robot_pose, target_v, turn, next_entity['width'])
 
-    reached_goal = False
     if goal is not None and is_close_point(current_x, current_y, goal[0], goal[1], tol=0.1):
         reached_goal = True
         next_entity['reached_goal'] = True
@@ -62,10 +66,10 @@ def _step_pure_pursuit_entity(entity, follow_traj, follow_RAD, target_v, KL=10, 
     next_entity['y'] = robot_pose[1, 0]
     next_entity['theta'] = robot_pose[2, 0]
 
-    return next_entity, reached_goal
+    return next_entity, reached_goal, reached_wall
 
 
-def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, target_v, KL=10, goal=None, max_steps=2400, dt=0.05, progress_interval=None):
+def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, target_v, KL=10, goal=None, max_steps=2400, dt=0.05, progress_interval=None, arena_size=2.0):
     """Run pure pursuit without rendering and return a frame log."""
     current_entities = deepcopy(entities)
     start_time = time.perf_counter()
@@ -75,6 +79,7 @@ def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, targ
     for entity, follow_traj in zip(current_entities, follow_trajs):
         entity['current_index'] = follow_traj.find_closest_index((entity['x'], entity['y']))
         entity['reached_goal'] = False
+        entity['reached_wall'] = False
 
     history = []
     for step in range(max_steps):
@@ -90,21 +95,25 @@ def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, targ
         })
 
         next_entities = []
+        all_entities_stopped = True
         goal_reached = True if goal is not None else False
         for entity, follow_traj in zip(current_entities, follow_trajs):
-            next_entity, reached_goal = _step_pure_pursuit_entity(
+            next_entity, reached_goal, reached_wall = _step_pure_pursuit_entity(
                 entity,
                 follow_traj,
                 follow_RAD,
                 target_v,
                 KL=KL,
                 goal=goal,
+                arena_size=arena_size,
             )
             next_entities.append(next_entity)
-            goal_reached = goal_reached and reached_goal if goal is not None else False
+            if goal is not None:
+                goal_reached = goal_reached and reached_goal
+            all_entities_stopped = all_entities_stopped and (reached_goal or reached_wall)
 
         current_entities = next_entities
-        if goal is not None and goal_reached:
+        if (goal is not None and goal_reached) or all_entities_stopped:
             history.append({
                 'step': step + 1,
                 'time': (step + 1) * dt,
@@ -116,7 +125,7 @@ def simulate_pure_pursuit(entities, trajectories, follow_trajs, follow_RAD, targ
     return history, current_entities
 
 
-def move_to_singular_point(entities, point, target_v, trajectories, KL=10):
+def move_to_singular_point(entities, point, target_v, trajectories, KL=10, arena_size=2.0):
     ax = plt.ion()
     plt.figure()
 
@@ -134,7 +143,7 @@ def move_to_singular_point(entities, point, target_v, trajectories, KL=10):
 
          
         for entity in entities:
-            plot_arena(axes, entities=entities, arena_size=[2, 2], trajectories=trajectories)
+            plot_arena(axes, entities=entities, arena_size=[3, 3], trajectories=trajectories)
             #plot_noarena(axes, entities=entities, trajectories=trajectories)
             robot_pose = np.array([[entity['x']], [entity['y']], [entity['theta']]])
 
@@ -145,7 +154,7 @@ def move_to_singular_point(entities, point, target_v, trajectories, KL=10):
             turn = lock_angle(180, yl)
             #print(f"turn: {turn:.2f}")
 
-            if not is_close_wall(current_x, current_y) and not is_close_point(current_x, current_y, point[0, 0], point[1, 0], tol = 0.05):
+            if not is_close_wall(current_x, current_y, arena_size=arena_size) and not is_close_point(current_x, current_y, point[0, 0], point[1, 0], tol = 0.05):
                 robot_pose = turnwheels_sim(robot_pose, target_v, (turn), entity['width'])
                 
             print(f"Plotting {entity['id']} at ({current_x}, {current_y}) with angle {wrap_angle(np.degrees(current_theta))} in degrees")
@@ -160,7 +169,7 @@ def move_to_singular_point(entities, point, target_v, trajectories, KL=10):
     plt.ioff() 
 
 
-def movetopoint_noarena(entities, point, target_v, trajectories, KL=10):
+def movetopoint_noarena(entities, point, target_v, trajectories, KL=10, arena_size=2.0):
     ax = plt.ion()
     plt.figure()
 
@@ -208,7 +217,7 @@ def movetopoint_noarena(entities, point, target_v, trajectories, KL=10):
 
     plt.ioff() 
 
-def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=10, goal=None):
+def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=10, goal=None, arena_size=2.0):
     ax = plt.ion()
     plt.figure()
 
@@ -229,7 +238,7 @@ def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=1
         axes = plt.gca()
 
         for entity in entities:
-            plot_arena(axes, entities=entities, arena_size=[2, 2], trajectories=trajectories)
+            plot_arena(axes, entities=entities, arena_size=[3, 3], trajectories=trajectories)
             robot_pose = np.array([[entity['x']], [entity['y']], [entity['theta']]])
 
             current_x, current_y, current_theta = entity['x'], entity['y'], entity['theta'] #getLocalizerPose()
@@ -242,7 +251,7 @@ def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=1
             turn = lock_angle(180, yl)
             # print(f"turn: {turn:.2f}")
 
-            if not is_close_wall(current_x, current_y):
+            if not is_close_wall(current_x, current_y, arena_size=arena_size):
                 robot_pose = turnwheels_sim(robot_pose, target_v, (turn), entity['width'])
 
             if entity == entities[0] and goal is not None:
@@ -263,26 +272,27 @@ def pure_pursuit(entities, trajectories, follow_traj, follow_RAD, target_v, KL=1
     
     plt.ioff() 
 
-def create_obstacle_grid(obstacles, N, BUFFER):
+def create_obstacle_grid(obstacles, N, BUFFER, arena_size=2.0):
     # Create a 101x101 obstacle grid
     obstacle_grid = np.zeros((N, N), dtype=np.float64)
+    cell_size = arena_size / (N - 1)
     # Loop through obstacles and mark cells as occupied
     obs_buffered = []
     for obstacle in obstacles:
         xmin, xmax, ymin, ymax = obstacle
 
         # Add buffer in metres
-        xmin_m = max(0, xmin - BUFFER*0.02)  # Clamp xmin to 0
-        xmax_m = min(2, xmax + BUFFER*0.02)  # Clamp xmax to 2
-        ymin_m = max(0, ymin - BUFFER*0.02)  # Clamp ymin to 0
-        ymax_m = min(2, ymax + BUFFER*0.02)  # Clamp ymax to 2
+        xmin_m = max(0, xmin - BUFFER * cell_size)
+        xmax_m = min(arena_size, xmax + BUFFER * cell_size)
+        ymin_m = max(0, ymin - BUFFER * cell_size)
+        ymax_m = min(arena_size, ymax + BUFFER * cell_size)
 
         # Convert to cells
         # Adding Buffer around obstacle
-        xmin = max(0,(int(xmin*100/2) - BUFFER))
-        xmax = min(N-1,(int(xmax*100/2) + BUFFER))
-        ymin = max(0,(int(ymin*100/2) - BUFFER))
-        ymax = min(N-1,(int(ymax*100/2) + BUFFER))
+        xmin = max(0, int(round(xmin / cell_size)) - BUFFER)
+        xmax = min(N - 1, int(round(xmax / cell_size)) + BUFFER)
+        ymin = max(0, int(round(ymin / cell_size)) - BUFFER)
+        ymax = min(N - 1, int(round(ymax / cell_size)) + BUFFER)
 
         # Mark the corresponding cells as occupied
         # Add 1 to max to include max in splicing
@@ -297,7 +307,7 @@ def create_obstacle_grid(obstacles, N, BUFFER):
     obstacle_grid[:, -BUFFER:] = 1  # Right border
     return obstacle_grid, obs_buffered, obstacles
 
-def distance_transform(map:np.ndarray,goal:np.ndarray, N:int):
+def distance_transform(map:np.ndarray, goal:np.ndarray, N:int, arena_size=2.0):
     """
     Compute the distance transform from the provided map and goal location.
 
@@ -318,8 +328,9 @@ def distance_transform(map:np.ndarray,goal:np.ndarray, N:int):
     """
     distance_map = np.full_like(map, np.inf)  # Initialize distance map with NaNs
     print(goal)
-    goal_x = int(goal[0]*100/2)
-    goal_y = int(goal[1]*100/2)
+    cell_size = arena_size / (N - 1)
+    goal_x = int(round(goal[0] / cell_size))
+    goal_y = int(round(goal[1] / cell_size))
     #? Swap x and y coz rows and collumns matrix
     distance_map[goal_y, goal_x] = 0  # Distance to goal is 0
     # Directions in surrounding 8 cells
@@ -348,16 +359,17 @@ def distance_transform(map:np.ndarray,goal:np.ndarray, N:int):
 
     return distance_map
 
-def init_path(distance_map, start, N):
-    path = search_path(distance_map, start, N)
+def init_path(distance_map, start, N, arena_size=2.0):
+    path = search_path(distance_map, start, N, arena_size=arena_size)
     path_x = path[:, 0]
     path_y = path[:, 1]
-    # For both path_x and path_y, need to undo int(start[0]*100/2) convertion
-    xpath = path_x / 100 * 2
-    ypath = path_y / 100 * 2
+    cell_size = arena_size / (N - 1)
+    # Convert cell coordinates back into arena coordinates.
+    xpath = path_x * cell_size
+    ypath = path_y * cell_size
     return path, path_x, path_y, xpath, ypath
 
-def search_path(distance_map: np.ndarray, start: np.ndarray, N: int):
+def search_path(distance_map: np.ndarray, start: np.ndarray, N: int, arena_size=2.0):
     """
     Search for a path from the start position to the goal position using the distance map.
 
@@ -378,8 +390,9 @@ def search_path(distance_map: np.ndarray, start: np.ndarray, N: int):
     directions = np.array([(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (-1, 1), (1, -1)])
 
     # Convert start position to integer coordinates
-    current_x = int(start[0]*100/2)
-    current_y = int(start[1]*100/2)
+    cell_size = arena_size / (N - 1)
+    current_x = int(round(start[0] / cell_size))
+    current_y = int(round(start[1] / cell_size))
 
     while True:
         # Add the current position to the path

@@ -68,7 +68,7 @@ def plot_triangle(x, y, theta, base_length: float, height: float, color:str, axe
 
     if triangle:
         axes.plot(Tvertices[:, 0], Tvertices[:, 1], color)
-        axes.plot(Tvertices[:-1, 0], Tvertices[:-1, 1], 'k.', markersize=6)
+        #axes.plot(Tvertices[:-1, 0], Tvertices[:-1, 1], 'k.', markersize=6)
 
     if coordinate_frame:
         axes.quiver(
@@ -226,7 +226,7 @@ def render_history(history, trajectories=None, arena_size=None, beacons=None, ob
     if trajectories is None:
         trajectories = []
     if arena_size is None:
-        arena_size = [2, 2]
+        arena_size = [10, 10]
     if beacons is None:
         beacons = []
 
