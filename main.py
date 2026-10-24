@@ -13,6 +13,8 @@ if __name__ == '__main__':
     parser.add_argument('--perf', action='store_true', help='Print simulation and playback timing information')
     parser.add_argument('--perf-interval', type=int, default=100, help='Print a progress line every N simulated frames')
     parser.add_argument('--perf-runs', type=int, default=1, help='Run the simulation N times and average the performance')
+    parser.add_argument('--cuda', action='store_true', help='Use the CUDA distance transform')
+    parser.add_argument('--cuda-variant', choices=['sync', 'inplace'], default='sync')
     args = parser.parse_args()
 
     # PURE PURSUIT LEMNISCATE WITH GOAL
@@ -82,6 +84,11 @@ if __name__ == '__main__':
     if args.perf:
         print('Performance test: simulation starting')
 
+    if args.cuda:
+        from distance_transform_cuda import distance_transform_cuda
+        # untimed warm-up so JIT compile and CUDA start-up don't count in run 1
+        distance_transform_cuda(np.zeros((8, 8)), np.array([0.0, 0.0]), 8, arena_size=1.0, variant=args.cuda_variant)
+
     sim_durations = []
     transform_durations = []
     history = []
@@ -91,7 +98,10 @@ if __name__ == '__main__':
             print(f'Performance test: simulation run {run_index + 1}/{args.perf_runs}')
 
         distance_transform_start = time.perf_counter()
-        distance_map = distance_transform(ob_grid, goal, N, arena_size=arena_size)
+        if args.cuda:
+            distance_map = distance_transform_cuda(ob_grid, goal, N, arena_size=arena_size, variant=args.cuda_variant)
+        else:
+            distance_map = distance_transform(ob_grid, goal, N, arena_size=arena_size)
         distance_transform_end = time.perf_counter()
         transform_durations.append(distance_transform_end - distance_transform_start)
 

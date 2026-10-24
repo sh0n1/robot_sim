@@ -52,6 +52,7 @@ def make_grid(create_obstacle_grid, n):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, nargs="+", default=[101, 251])
+    ap.add_argument("--variant", nargs="+", default=["sync", "inplace"], choices=["sync", "inplace"])
     args = ap.parse_args()
 
     create_obstacle_grid, cpu_dt = load_reference()
@@ -61,17 +62,19 @@ if __name__ == "__main__":
         t0 = time.perf_counter()
         ref = cpu_dt(grid, GOAL, n, arena_size=ARENA)
         t_cpu = time.perf_counter() - t0
-        t0 = time.perf_counter()
-        got, stats = distance_transform_cuda(grid, GOAL, n, arena_size=ARENA,
-                                             check_every=1, return_stats=True)
-        t_gpu = time.perf_counter() - t0
+        for variant in args.variant:
+            t0 = time.perf_counter()
+            got, stats = distance_transform_cuda(grid, GOAL, n, arena_size=ARENA, check_every=1,
+                                                 return_stats=True, variant=variant)
+            t_gpu = time.perf_counter() - t0
 
-        same_inf = np.array_equal(np.isinf(ref), np.isinf(got))
-        finite = np.isfinite(ref)
-        max_err = float(np.max(np.abs(ref[finite] - got[finite]))) if finite.any() else 0.0
-        good = same_inf and max_err < 1e-9
-        ok &= good
-        print(f"N={n}: {'PASS' if good else 'FAIL'}  rounds={stats['rounds']}  "
-              f"max|cpu-gpu|={max_err:.2e}  same unreachable/wall cells={same_inf}  "
-              f"(cpu {t_cpu:.2f}s, cuda-or-sim {t_gpu:.2f}s)")
+            same_inf = np.array_equal(np.isinf(ref), np.isinf(got))
+            finite = np.isfinite(ref)
+            max_err = float(np.max(np.abs(ref[finite] - got[finite]))) if finite.any() else 0.0
+            exact = bool(np.array_equal(ref, got))
+            good = same_inf and max_err < 1e-9
+            ok &= good
+            print(f"N={n} [{variant}]: {'PASS' if good else 'FAIL'}  rounds={stats['rounds']}  "
+                  f"max|cpu-gpu|={max_err:.2e}  bitwise identical={exact}  "
+                  f"same unreachable/wall cells={same_inf}  (cpu {t_cpu:.2f}s, gpu/sim {t_gpu:.2f}s)")
     sys.exit(0 if ok else 1)
