@@ -34,12 +34,16 @@ if __name__ == '__main__':
     arena_size = 3.0
     obstacles = [(0.5, 0.9, 0.7, 1),
                 (1.3, 1.7, 1.1, 1.4),
+
                 (0.7, 1.0, 1.3, 1.6),
                 (2, 2.7, 1.5, 2.5),
+
                 (1.7, 2.5, 0.7, 1.3),
                 (1.9, 2.3, 0.4, 0.9),
+
                 (0.3, 0.7, 1.9, 2.3),
                 (1.4, 1.8, 2.2, 2.6),
+
                 (0.1, 0.5, 2.5, 2.9),
                 (1.0, 1.3, 0.1, 0.5),
                 ]
@@ -148,7 +152,7 @@ if __name__ == '__main__':
         sim_total = sum(sim_durations)
         frame_count = len(history)
         simulated_time = history[-1]['time'] if history else 0.0
-        print(f'Distance transform time: {transform_durations[-1]:.4f}s')
+        print(f'\nDistance transform time: {transform_durations[-1]:.4f}s')
         print(f'Total distance transform time across {len(transform_durations)} run(s): {transform_total:.4f}s')
         print(f'Average distance transform time: {transform_avg:.4f}s')
         print(f'Simulation complete: {frame_count} frames per run')
