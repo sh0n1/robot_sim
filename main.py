@@ -30,7 +30,7 @@ if __name__ == '__main__':
     goal = np.array([goal_x, goal_y])
 
     # PATH PLANNING
-    N = 101 #for bench mark: 101, 251, 501, 1001, 2001
+    N = 501 #for bench mark: 101, 251, 501, 1001, 2001
     buf = (N-1)//50  # The obstacle detection buffer. 5 at N=101
 
     arena_size = 3.0
