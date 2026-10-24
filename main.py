@@ -155,6 +155,10 @@ if __name__ == '__main__':
         print(f'\nDistance transform time: {transform_durations[-1]:.4f}s')
         print(f'Total distance transform time across {len(transform_durations)} run(s): {transform_total:.4f}s')
         print(f'Average distance transform time: {transform_avg:.4f}s')
+        import statistics
+        print(f'Per-run distance transform times: {[round(t, 4) for t in transform_durations]}')
+        if len(transform_durations) > 1:
+            print(f'Std dev: {statistics.stdev(transform_durations):.4f}s')
         print(f'Simulation complete: {frame_count} frames per run')
         print(f'Average simulation time over {len(sim_durations)} run(s): {sim_duration:.4f}s')
         print(f'Total simulation time across runs: {sim_total:.4f}s')
