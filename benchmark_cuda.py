@@ -1,19 +1,3 @@
-"""Benchmark: sequential distance transform vs CUDA, across grid sizes.
-
-    python benchmark_cuda.py                         # N = 101 251 501 1001 2001
-    python benchmark_cuda.py --n 101 251 --repeats 3
-    python benchmark_cuda.py --cpu-max-n 1001        # skip the slow CPU run at N=2001
-
-Run it from your repo root (next to controllers.py), with nothing else heavy
-running, on mains power, and with the SAME laptop you used for the CPU numbers.
-Writes results.csv (and results.png if matplotlib is available).
-
-What is timed (be explicit about this in the report):
-  cpu_s        controllers.distance_transform(...)  (sequential FIFO queue)
-  gpu_total_s  distance_transform_cuda(...) end to end = upload + kernels + download
-  kernels_s    just the relaxation rounds (incl. the small convergence-flag copies)
-JIT compilation and CUDA context start-up are excluded by one warm-up call.
-"""
 import argparse
 import csv
 import os

@@ -1,34 +1,3 @@
-"""CUDA (Numba) distance transform: round-based relaxation, one thread per cell.
-
-Sequential version (controllers.distance_transform): one FIFO queue, one cell
-relaxed at a time.  Inherently serial (each step depends on the queue and on
-distances written by earlier steps), but it only does O(N^2) work.
-
-This version replaces the queue with repeated relaxation rounds.  Every round,
-every free cell looks at its 8 neighbours and takes
-    min(own distance, neighbour distance + step cost)
-Rounds repeat until a whole round changes nothing; that fixed point is the same
-set of shortest-path distances the queue version computes.
-
-Two variants (choose with variant=...):
-
-  "sync"    Double buffered.  A round reads ONLY the old buffer and writes ONLY
-            the new buffer, so no thread ever reads a value another thread is
-            writing in the same round: no data race, and the number of rounds is
-            deterministic.
-
-  "inplace" One buffer.  Threads read and write the same array in the same
-            round (asynchronous / chaotic relaxation).  A thread may see a
-            neighbour's old OR new value, but both are valid upper bounds on the
-            true distance and values only ever decrease, so it still converges
-            to the same fixed point -- usually in fewer rounds, because news
-            travels more than one cell per round.  Each cell is written by
-            exactly one thread, and 8-byte aligned loads/stores are atomic on
-            NVIDIA GPUs, so there are no torn reads.
-
-Trade-off to discuss in the report: both do more total work than the queue
-version (about N^2 cells x ~O(N) rounds), but every round is fully parallel.
-"""
 import math
 import time
 

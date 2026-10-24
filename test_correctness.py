@@ -1,12 +1,3 @@
-"""Check the CUDA distance transform against the sequential one.
-
-Run on your laptop (real GPU):      python test_correctness.py
-Run without a GPU (CUDA simulator): NUMBA_ENABLE_CUDASIM=1 python test_correctness.py --n 41
-
-Put this file next to controllers.py (your repo root).  If controllers.py can't
-be imported (missing cv2 etc.), the reference functions are pulled out of its
-source text instead, so the test always uses YOUR sequential code.
-"""
 import argparse
 import ast
 import os
